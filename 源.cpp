@@ -93,6 +93,7 @@ private:
 #define P_SHADOW_WIDTH 32
 	int interval_ms = 0;
 	POINT player_pos = { 500,500 };
+	unsigned int score = 0; //玩家得分
 public:
 	Player(LPCTSTR path_left, LPCTSTR path_right, LPCTSTR path_shadow, int num, int interval) :interval_ms(interval)
 	{
@@ -145,8 +146,6 @@ public:
 	//游戏进行时的绘制
 	void Draw()
 	{
-		static int last_draw = clock();
-
 		int pos_shadow_x = player_pos.x + ((PLAYER_WIDTH - P_SHADOW_WIDTH) >> 1);
 		int pos_shadow_y = player_pos.y + PLAYER_HEIGHT - 8;
 		putimage_alpha(pos_shadow_x, pos_shadow_y, &img_shadow);
@@ -158,9 +157,17 @@ public:
 
 		if (facing_left) { putimage_alpha(player_pos.x, player_pos.y, frame_list_left[idx_frame]); }
 		else { putimage_alpha(player_pos.x, player_pos.y, frame_list_right[idx_frame]); }
+	}
 
-		if (clock() - last_draw < 17) return;  // 约60FPS
-		last_draw = clock();
+	//绘制玩家得分
+	void DrawPlayerScore()
+	{
+		static TCHAR text[64];
+		_stprintf_s(text, _T("当前玩家得分:%d"), score);
+
+		setbkmode(TRANSPARENT);
+		settextcolor(RGB(255, 85, 185));
+		outtextxy(10, 10, text);
 	}
 
 	const POINT& GetPosition() const
@@ -177,6 +184,16 @@ public:
 	{
 		return PLAYER_HEIGHT;
 	}
+
+	void AddScore(unsigned int score)
+	{
+		this->score += score;
+	}
+
+	unsigned int GetScore() const
+	{
+		return score;
+	}
 };
 
 class Bullet
@@ -186,18 +203,14 @@ public:
 	POINT position = { 0,0 };
 public:
 	Bullet() = default;
+
 	~Bullet() = default;
 	
 	void Draw() const
 	{
-		static int last_draw = clock();
-
-		setlinecolor(RGB(255, 155, 50));
+		setlinecolor(RED);
 		setfillcolor(RGB(255, 155, 50));
 		fillcircle(position.x, position.y, RADIUS);
-
-		if (clock() - last_draw < 17) return;  // 约60FPS
-		last_draw = clock();
 	}
 };
 
@@ -212,9 +225,9 @@ private:
 	POINT enemy_pos = { 0,0 };
 	bool facing_left = false;
 	bool alive = true;
-	int anim_timer_id;  // 添加独立计时器ID
+	int anim_start_time;  // 每个敌人独立计时器
 public:
-	Enemy(LPCTSTR path_left, LPCTSTR path_right, LPCTSTR path_shadow, int num, int interval) :interval_ms(interval), anim_timer_id(rand() % 1000)
+	Enemy(LPCTSTR path_left, LPCTSTR path_right, LPCTSTR path_shadow, int num, int interval) :interval_ms(interval), anim_start_time(clock())
 	{
 		Load(path_left, path_right, path_shadow, num, interval);
 
@@ -302,24 +315,25 @@ public:
 
 	void Draw()
 	{
-		static int last_draw = clock();
-		
+		// 使用独立计时器判断动画帧
+		if (clock() - anim_start_time > interval_ms) {
+			idx_frame = (idx_frame + 1) % frame_list_left.size();
+			anim_start_time = clock();
+		}
+
+		// 绘制阴影
 		int pos_shadow_x = enemy_pos.x + ((ENEMY_WIDTH - E_SHADOW_WIDTH) >> 1);
 		int pos_shadow_y = enemy_pos.y + ENEMY_HEIGHT - 35;
 		putimage_alpha(pos_shadow_x, pos_shadow_y, &img_shadow);
 
-		if (Timer(interval_ms, anim_timer_id % 10)) { idx_frame = (idx_frame + 1) % frame_list_left.size(); }
-
+		// 绘制本体
 		if (facing_left) { putimage_alpha(enemy_pos.x, enemy_pos.y, frame_list_left[idx_frame]); }
 		else { putimage_alpha(enemy_pos.x, enemy_pos.y, frame_list_right[idx_frame]); }
-
-		if (clock() - last_draw < 17) return;  // 约60FPS
-		last_draw = clock();
 	}
 
 	static void TryGenerateEnemy(std::vector<Enemy*>& enemy_list)
 	{
-		if (Timer(200, 3))
+		if (rand() % 100 < 5) // 每帧3%概率生成
 		{
 			enemy_list.push_back(new Enemy(_T("img/enemy_left_%d.png"), _T("img/enemy_right_%d.png"), _T("img/shadow_enemy.png"), 6, 29));
 		}
@@ -344,9 +358,31 @@ void UpdateBullets(std::vector<Bullet>& bullet_list, const Player& player)
 
 int main()
 {
-	initgraph(WINDOW_WIDTH, WINDOW_HEIGHT);
+	// 获取屏幕分辨率
+	const int screen_width = GetSystemMetrics(SM_CXSCREEN);
+	const int screen_height = GetSystemMetrics(SM_CYSCREEN);
+
+	// 计算窗口起始坐标
+	const int start_x = (screen_width - WINDOW_WIDTH) / 2;
+	const int start_y = (screen_height - WINDOW_HEIGHT) / 2;
+
+	// 创建窗口
+	HWND hwnd = initgraph(WINDOW_WIDTH, WINDOW_HEIGHT);
+
+	// 设置窗口位置
+	SetWindowPos(hwnd, NULL, start_x, start_y,
+		WINDOW_WIDTH, WINDOW_HEIGHT,
+		SWP_NOZORDER | SWP_NOACTIVATE);
 
 	bool running = true;
+
+	//加载背景音乐
+	mciSendString(_T("open mus/bgm.mp3 alias bgm"), NULL, 0, NULL);
+	//加载击中音效
+	mciSendString(_T("open mus/hit.wav alias hit"), NULL, 0, NULL);
+
+	//播放背景音乐
+	mciSendString(_T("play bgm repeat from 0"), NULL, 0, NULL);
 
 	//加载背景
 	IMAGE img_background;
@@ -391,6 +427,8 @@ int main()
 				if ((*it)->CheckBulletCollision(bullet))
 				{
 					hit = true;
+					mciSendString(_T("play hit from 0"), NULL, 0, NULL);
+					anim.AddScore(1); //得分+1
 					break;
 				}
 			}
@@ -406,7 +444,9 @@ int main()
 				// 玩家碰撞检测
 				if ((*it)->CheckPlayerCollision(anim))
 				{
-					MessageBox(GetHWnd(), _T("扣“1”观看战绩CG"), _T("游戏结束"), MB_OK);
+					static TCHAR text[128];
+					_stprintf_s(text, _T("最终得分:%d !"), anim.GetScore());
+					MessageBox(GetHWnd(), text, _T("游戏结束"), MB_OK);
 					running = false;
 					break;
 				}
@@ -430,6 +470,8 @@ int main()
 		{
 			bullet.Draw();
 		}
+		//绘制玩家得分
+		anim.DrawPlayerScore();
 
 		FlushBatchDraw();
 
