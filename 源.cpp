@@ -549,7 +549,7 @@ int main()
 
 		ExMessage msg;
 
-		while (peekmessage(&msg))
+		while (!is_game_started && peekmessage(&msg))
 		{
 			btn_start_game.ProcessEvent(msg);
 			btn_quit_game.ProcessEvent(msg);
