@@ -46,26 +46,15 @@ bool Timer(int duration, int id) //参数：持续时间，几号定时器
 	return false;
 }
 
+//设计模式：享元模式
 class GameObject
 {
 public:
 	IMAGE img_shadow;
-	int idx_frame = 0; //动画帧索引
 	std::vector<IMAGE*> frame_list_left;
 	std::vector<IMAGE*> frame_list_right;
 public:
-	GameObject() = default;
-
-	virtual ~GameObject()
-	{
-		for (size_t i = 0; i < frame_list_left.size(); ++i)
-		{
-			delete frame_list_left[i];
-			delete frame_list_right[i];
-		}
-	}
-
-	void Load(LPCTSTR path_left, LPCTSTR path_right, LPCTSTR path_shadow, int num, int interval)
+	GameObject(LPCTSTR path_left, LPCTSTR path_right, LPCTSTR path_shadow, int num)
 	{
 		loadimage(&img_shadow, path_shadow);
 		TCHAR path_file[256];
@@ -82,22 +71,33 @@ public:
 			frame_list_right.push_back(frame);
 		}
 	}
+
+	~GameObject()
+	{
+		for (size_t i = 0; i < frame_list_left.size(); ++i)
+		{
+			delete frame_list_left[i];
+			delete frame_list_right[i];
+		}
+	}
 };
 
-class Player :public GameObject
+class Player
 {
 private:
 #define PLAYER_SPEED 10
 #define PLAYER_WIDTH 80
 #define PLAYER_HEIGHT 80
 #define P_SHADOW_WIDTH 32
+	int idx_frame = 0; //动画帧索引
 	int interval_ms = 0;
 	POINT player_pos = { 500,500 };
 	unsigned int score = 0; //玩家得分
+public:	static GameObject* anim_GO;
 public:
-	Player(LPCTSTR path_left, LPCTSTR path_right, LPCTSTR path_shadow, int num, int interval) :interval_ms(interval)
+	Player(GameObject* anim_GO,int interval) :interval_ms(interval)
 	{
-		Load(path_left, path_right, path_shadow, num, interval);
+		this->anim_GO = anim_GO;
 	}
 
 	~Player() = default;
@@ -148,15 +148,15 @@ public:
 	{
 		int pos_shadow_x = player_pos.x + ((PLAYER_WIDTH - P_SHADOW_WIDTH) >> 1);
 		int pos_shadow_y = player_pos.y + PLAYER_HEIGHT - 8;
-		putimage_alpha(pos_shadow_x, pos_shadow_y, &img_shadow);
+		putimage_alpha(pos_shadow_x, pos_shadow_y, &anim_GO->img_shadow);
 		static bool facing_left = false;
 		if (GetAsyncKeyState('A') & 0x8000 && !(GetAsyncKeyState('D') & 0x8000)) { facing_left = true; }
 		else if (GetAsyncKeyState('D') & 0x8000 && !(GetAsyncKeyState('A') & 0x8000)) { facing_left = false; }
 
-		if (Timer(interval_ms, 1)) { idx_frame = (idx_frame + 1) % frame_list_left.size(); }
+		if (Timer(interval_ms, 1)) { idx_frame = (idx_frame + 1) % anim_GO->frame_list_left.size(); }
 
-		if (facing_left) { putimage_alpha(player_pos.x, player_pos.y, frame_list_left[idx_frame]); }
-		else { putimage_alpha(player_pos.x, player_pos.y, frame_list_right[idx_frame]); }
+		if (facing_left) { putimage_alpha(player_pos.x, player_pos.y, anim_GO->frame_list_left[idx_frame]); }
+		else { putimage_alpha(player_pos.x, player_pos.y, anim_GO->frame_list_right[idx_frame]); }
 	}
 
 	//绘制玩家得分
@@ -195,6 +195,7 @@ public:
 		return score;
 	}
 };
+GameObject* Player::anim_GO = nullptr; // 类外定义
 
 class Bullet
 {
@@ -214,22 +215,24 @@ public:
 	}
 };
 
-class Enemy :public GameObject
+class Enemy
 {
 private:
 #define ENEMY_SPEED 2
 #define ENEMY_WIDTH 80
 #define ENEMY_HEIGHT 80
 #define E_SHADOW_WIDTH 48
+	int idx_frame = 0; //动画帧索引
 	int interval_ms = 0;
 	POINT enemy_pos = { 0,0 };
 	bool facing_left = false;
 	bool alive = true;
-	int anim_start_time;  // 每个敌人独立计时器
+	int start_time;  // 每个敌人独立计时器
+public:	static GameObject* enemy_GO;
 public:
-	Enemy(LPCTSTR path_left, LPCTSTR path_right, LPCTSTR path_shadow, int num, int interval) :interval_ms(interval), anim_start_time(clock())
+	Enemy(GameObject* enemy_GO, int interval) :interval_ms(interval), start_time(clock())
 	{
-		Load(path_left, path_right, path_shadow, num, interval);
+		this->enemy_GO = enemy_GO;
 
 		//敌人生成边界
 		enum class SpawnEdge
@@ -316,29 +319,30 @@ public:
 	void Draw()
 	{
 		// 使用独立计时器判断动画帧
-		if (clock() - anim_start_time > interval_ms) {
-			idx_frame = (idx_frame + 1) % frame_list_left.size();
-			anim_start_time = clock();
+		if (clock() - start_time > interval_ms) {
+			idx_frame = (idx_frame + 1) % enemy_GO->frame_list_left.size();
+			start_time = clock();
 		}
 
 		// 绘制阴影
 		int pos_shadow_x = enemy_pos.x + ((ENEMY_WIDTH - E_SHADOW_WIDTH) >> 1);
 		int pos_shadow_y = enemy_pos.y + ENEMY_HEIGHT - 35;
-		putimage_alpha(pos_shadow_x, pos_shadow_y, &img_shadow);
+		putimage_alpha(pos_shadow_x, pos_shadow_y, &enemy_GO->img_shadow);
 
 		// 绘制本体
-		if (facing_left) { putimage_alpha(enemy_pos.x, enemy_pos.y, frame_list_left[idx_frame]); }
-		else { putimage_alpha(enemy_pos.x, enemy_pos.y, frame_list_right[idx_frame]); }
+		if (facing_left) { putimage_alpha(enemy_pos.x, enemy_pos.y, enemy_GO->frame_list_left[idx_frame]); }
+		else { putimage_alpha(enemy_pos.x, enemy_pos.y, enemy_GO->frame_list_right[idx_frame]); }
 	}
 
 	static void TryGenerateEnemy(std::vector<Enemy*>& enemy_list)
 	{
 		if (rand() % 100 < 5) // 每帧3%概率生成
 		{
-			enemy_list.push_back(new Enemy(_T("img/enemy_left_%d.png"), _T("img/enemy_right_%d.png"), _T("img/shadow_enemy.png"), 6, 29));
+			enemy_list.push_back(new Enemy(enemy_GO, 29));
 		}
 	}
 };
+GameObject* Enemy::enemy_GO = nullptr; // 类外定义
 
 //更新子弹位置
 void UpdateBullets(std::vector<Bullet>& bullet_list, const Player& player)
@@ -376,6 +380,13 @@ int main()
 
 	bool running = true;
 
+	//初始化资产指针
+	Player::anim_GO = new GameObject(_T("img/player_left_%d.png"), _T("img/player_right_%d.png"), _T("img/shadow_player.png"), 6);
+	Enemy::enemy_GO = new GameObject(_T("img/enemy_left_%d.png"), _T("img/enemy_right_%d.png"), _T("img/shadow_enemy.png"), 6);
+
+	//创建角色对象
+	Player anim(Player::anim_GO, 29);
+
 	//加载背景音乐
 	mciSendString(_T("open mus/bgm.mp3 alias bgm"), NULL, 0, NULL);
 	//加载击中音效
@@ -387,9 +398,6 @@ int main()
 	//加载背景
 	IMAGE img_background;
 	loadimage(&img_background, _T("img/background.png"));
-
-	//角色类实例
-	Player anim(_T("img/player_left_%d.png"), _T("img/player_right_%d.png"), _T("img/shadow_player.png"), 6, 29);
 
 	//子弹类线性表
 	std::vector<Bullet> bullet_list(3);
@@ -427,6 +435,7 @@ int main()
 				if ((*it)->CheckBulletCollision(bullet))
 				{
 					hit = true;
+					//播放击中音效
 					mciSendString(_T("play hit from 0"), NULL, 0, NULL);
 					anim.AddScore(1); //得分+1
 					break;
@@ -482,6 +491,9 @@ int main()
 			Sleep(17 - delete_time);
 		}
 	}
+
+	delete Player::anim_GO;
+	delete Enemy::enemy_GO;
 
 	EndBatchDraw();
 	return 0;
