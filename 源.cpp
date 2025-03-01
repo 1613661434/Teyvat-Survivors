@@ -145,6 +145,8 @@ public:
 	//游戏进行时的绘制
 	void Draw()
 	{
+		static int last_draw = clock();
+
 		int pos_shadow_x = player_pos.x + ((PLAYER_WIDTH - P_SHADOW_WIDTH) >> 1);
 		int pos_shadow_y = player_pos.y + PLAYER_HEIGHT - 8;
 		putimage_alpha(pos_shadow_x, pos_shadow_y, &img_shadow);
@@ -156,6 +158,9 @@ public:
 
 		if (facing_left) { putimage_alpha(player_pos.x, player_pos.y, frame_list_left[idx_frame]); }
 		else { putimage_alpha(player_pos.x, player_pos.y, frame_list_right[idx_frame]); }
+
+		if (clock() - last_draw < 17) return;  // 约60FPS
+		last_draw = clock();
 	}
 
 	const POINT& GetPosition() const
@@ -185,9 +190,14 @@ public:
 	
 	void Draw() const
 	{
+		static int last_draw = clock();
+
 		setlinecolor(RGB(255, 155, 50));
 		setfillcolor(RGB(255, 155, 50));
 		fillcircle(position.x, position.y, RADIUS);
+
+		if (clock() - last_draw < 17) return;  // 约60FPS
+		last_draw = clock();
 	}
 };
 
@@ -201,8 +211,10 @@ private:
 	int interval_ms = 0;
 	POINT enemy_pos = { 0,0 };
 	bool facing_left = false;
+	bool alive = true;
+	int anim_timer_id;  // 添加独立计时器ID
 public:
-	Enemy(LPCTSTR path_left, LPCTSTR path_right, LPCTSTR path_shadow, int num, int interval) :interval_ms(interval)
+	Enemy(LPCTSTR path_left, LPCTSTR path_right, LPCTSTR path_shadow, int num, int interval) :interval_ms(interval), anim_timer_id(rand() % 1000)
 	{
 		Load(path_left, path_right, path_shadow, num, interval);
 
@@ -290,19 +302,24 @@ public:
 
 	void Draw()
 	{
+		static int last_draw = clock();
+		
 		int pos_shadow_x = enemy_pos.x + ((ENEMY_WIDTH - E_SHADOW_WIDTH) >> 1);
 		int pos_shadow_y = enemy_pos.y + ENEMY_HEIGHT - 35;
 		putimage_alpha(pos_shadow_x, pos_shadow_y, &img_shadow);
 
-		if (Timer(interval_ms, 2)) { idx_frame = (idx_frame + 1) % frame_list_left.size(); }
+		if (Timer(interval_ms, anim_timer_id % 10)) { idx_frame = (idx_frame + 1) % frame_list_left.size(); }
 
 		if (facing_left) { putimage_alpha(enemy_pos.x, enemy_pos.y, frame_list_left[idx_frame]); }
 		else { putimage_alpha(enemy_pos.x, enemy_pos.y, frame_list_right[idx_frame]); }
+
+		if (clock() - last_draw < 17) return;  // 约60FPS
+		last_draw = clock();
 	}
 
 	static void TryGenerateEnemy(std::vector<Enemy*>& enemy_list)
 	{
-		if (Timer(100, 3))
+		if (Timer(200, 3))
 		{
 			enemy_list.push_back(new Enemy(_T("img/enemy_left_%d.png"), _T("img/enemy_right_%d.png"), _T("img/shadow_enemy.png"), 6, 29));
 		}
@@ -363,24 +380,37 @@ int main()
 		}
 
 		//检测敌人与玩家的碰撞
-		for (size_t i = 0; i < enemy_list.size(); ++i)
+		auto it = enemy_list.begin();
+		while (it != enemy_list.end())
 		{
-			Enemy* enemy = enemy_list[i];
-			if (enemy->CheckPlayerCollision(anim))
-			{
-				MessageBox(GetHWnd(), _T("扣“1”观看战绩CG"), _T("游戏结束"), MB_OK);
-				running = false;
-				break;
-			}
-			//检测敌人与子弹的碰撞，是则删除敌人
+			bool hit = false;
+
+			// 检测子弹碰撞
 			for (const Bullet& bullet : bullet_list)
 			{
-				if (enemy->CheckBulletCollision(bullet))
+				if ((*it)->CheckBulletCollision(bullet))
 				{
-					std::swap(enemy, enemy_list.back());
-					enemy_list.pop_back();
-					delete enemy;
+					hit = true;
+					break;
 				}
+			}
+
+			// 处理碰撞结果
+			if (hit)
+			{
+				delete* it;       // 释放内存
+				it = enemy_list.erase(it);  // 安全删除元素
+			}
+			else
+			{
+				// 玩家碰撞检测
+				if ((*it)->CheckPlayerCollision(anim))
+				{
+					MessageBox(GetHWnd(), _T("扣“1”观看战绩CG"), _T("游戏结束"), MB_OK);
+					running = false;
+					break;
+				}
+				++it;
 			}
 		}
 
@@ -405,9 +435,9 @@ int main()
 
 		int end_time = clock();
 		int delete_time = end_time - start_time;
-		if (delete_time < 7)
+		if (delete_time < 17) // 约60FPS
 		{
-			Sleep(7 - delete_time);
+			Sleep(17 - delete_time);
 		}
 	}
 
