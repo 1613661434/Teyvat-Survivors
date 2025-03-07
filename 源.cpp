@@ -240,7 +240,7 @@ public:
 		this->enemy_GO = enemy_GO;
 
 		//敌人生成边界
-		enum class SpawnEdge
+		enum class SpawnEdge: char
 		{
 			Up = 0, Dwon = 1, Left = 2, Right = 3
 		};
