@@ -199,6 +199,11 @@ public:
 	{
 		return score;
 	}
+
+#undef PLAYER_SPEED
+#undef PLAYER_WIDTH
+#undef PLAYER_HEIGHT
+#undef P_SHADOW_WIDTH
 };
 GameObject* Player::anim_GO = nullptr; // 类外定义
 
@@ -218,6 +223,8 @@ public:
 		setfillcolor(RGB(255, 155, 50));
 		fillcircle(position.x, position.y, RADIUS);
 	}
+
+#undef RADIUS
 };
 
 class Enemy
@@ -346,6 +353,11 @@ public:
 			enemy_list.push_back(new Enemy(enemy_GO, 29));
 		}
 	}
+
+#undef ENEMY_SPEED
+#undef ENEMY_WIDTH
+#undef ENEMY_HEIGHT
+#undef E_SHADOW_WIDTH
 };
 GameObject* Enemy::enemy_GO = nullptr; // 类外定义
 
@@ -477,6 +489,9 @@ void UpdateBullets(std::vector<Bullet>& bullet_list, const Player& player)
 		bullet_list[i].position.x = player_position.x + player.GetPlayerWidth() / 2 + (int)(radius * sin(radian));
 		bullet_list[i].position.y = player_position.y + player.GetPlayerHeight() / 2 + (int)(radius * cos(radian));
 	}
+
+#undef RADIAL_SPEED
+#undef TANGENT_SPEED
 }
 
 int main()
